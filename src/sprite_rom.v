@@ -2,7 +2,7 @@
 
 // Bit 6 is opacity: black and white are both available as opaque colors.
 module sprite_rom #(
-    parameter MEM_FILE = "data/sprites.mem"
+    parameter MEM_FILE = "../data/sprites.mem"
 ) (
     input wire clk,
     input wire rst_n,

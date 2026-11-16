@@ -2,8 +2,8 @@
 
 // 16 reusable 16x16 tiles and five 10x5 tile maps, not screen-sized images.
 module bg_rom #(
-    parameter TILE_FILE = "data/bg_tiles.mem",
-    parameter MAP_FILE = "data/room_maps.mem"
+    parameter TILE_FILE = "../data/bg_tiles.mem",
+    parameter MAP_FILE = "../data/room_maps.mem"
 ) (
     input wire clk,
     input wire rst_n,
