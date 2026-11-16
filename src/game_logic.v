@@ -9,12 +9,13 @@ module game_logic (
     output reg [5:0] RGB
 );
     wire inp_b, inp_y, inp_start, inp_left, inp_right, inp_a, inp_x;
+    wire [5:0] unused_buttons;
     gamepad_pmod_single driver (
         .rst_n(rst_n), .clk(clk), .pmod_data(ui_in[6]),
         .pmod_clk(ui_in[5]), .pmod_latch(ui_in[4]),
-        .b(inp_b), .y(inp_y), .select(), .start(inp_start),
-        .up(), .down(), .left(inp_left), .right(inp_right),
-        .a(inp_a), .x(inp_x), .l(), .r(), .is_present()
+        .b(inp_b), .y(inp_y), .select(unused_buttons[0]), .start(inp_start),
+        .up(unused_buttons[1]), .down(unused_buttons[2]), .left(inp_left), .right(inp_right),
+        .a(inp_a), .x(inp_x), .l(unused_buttons[3]), .r(unused_buttons[4]), .is_present(unused_buttons[5])
     );
 
     localparam START=3'd0, PLAYER=3'd1, ENEMY=3'd2,
@@ -126,22 +127,22 @@ module game_logic (
         sprite_enable = 0; sprite_id = 0; sprite_x = 0; sprite_y = 0;
         if (fetch_y >= 60 && fetch_y < 84 && fetch_x >= 28 && fetch_x < 44) begin
             sprite_enable = 1; sprite_id = 0;
-            sprite_x = fetch_x - 8'd28; sprite_y = fetch_y - 7'd60;
+            sprite_x = fetch_x[3:0] - 4'd12; sprite_y = fetch_y[4:0] - 5'd28;
         end else if (enemy_hp != 0 && fetch_y >= 60 && fetch_y < 84 && fetch_x >= 108 && fetch_x < 124) begin
             sprite_enable = 1; sprite_id = {1'b0,room} + 4'd1;
-            sprite_x = fetch_x - 8'd108; sprite_y = fetch_y - 7'd60;
+            sprite_x = fetch_x[3:0] - 4'd12; sprite_y = fetch_y[4:0] - 5'd28;
         end else if (fetch_y >= 40 && fetch_y < 64 && fetch_x >= 72 && fetch_x < 88) begin
             sprite_enable = 1; sprite_id = 6;
-            sprite_x = fetch_x - 8'd72; sprite_y = fetch_y - 7'd40;
+            sprite_x = fetch_x[3:0] - 4'd8; sprite_y = fetch_y[4:0] - 5'd8;
         end else if (fetch_y >= 28 && fetch_y < 52 && (fetch_x < 16 || fetch_x >= 144)) begin
             sprite_enable = 1; sprite_id = 8;
-            sprite_x = fetch_x[3:0]; sprite_y = fetch_y - 7'd28;
+            sprite_x = fetch_x[3:0]; sprite_y = fetch_y[4:0] - 5'd28;
         end else if (fetch_y >= 64 && fetch_y < 88 && fetch_x >= 72 && fetch_x < 88 && enemy_hp == 0) begin
             sprite_enable = 1; sprite_id = 7;
-            sprite_x = fetch_x - 8'd72; sprite_y = fetch_y - 7'd64;
+            sprite_x = fetch_x[3:0] - 4'd8; sprite_y = fetch_y[4:0];
         end else if (fetch_y >= 64 && fetch_y < 88 && fetch_x >= 8 && fetch_x < 24 && room[0]) begin
             sprite_enable = 1; sprite_id = 9;
-            sprite_x = fetch_x - 8'd8; sprite_y = fetch_y - 7'd64;
+            sprite_x = fetch_x[3:0] - 4'd8; sprite_y = fetch_y[4:0];
         end
     end
     bg_rom background (.clk(clk), .rst_n(rst_n), .room(room),
@@ -155,11 +156,12 @@ module game_logic (
     reg [207:0] text_line;
     wire [7:0] text_x = draw_x - 8'd2;
     wire [6:0] text_y = draw_y - 7'd2;
-    wire [4:0] text_col = text_x / 8'd6;
-    wire [2:0] glyph_x = text_x % 8'd6;
+    wire [7:0] text_col = text_x / 8'd6;
+    wire [7:0] glyph_x = text_x % 8'd6;
     wire [7:0] character = text_col < 26 ? text_line[207 - text_col*8 -: 8] : 8'd32;
     wire [4:0] glyph_row = font[{character[6:0],text_y[2:0]}];
     wire ink = draw_x >= 2 && draw_x < 158 && glyph_x < 5 && glyph_row[4-glyph_x];
+    wire _unused_ok = &{ui_in[7], ui_in[3:0], events[0], fetch_offset[9:8], character[7]};
     reg [5:0] composed;
     always @* begin
         text_line = "                          ";

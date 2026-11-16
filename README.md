@@ -54,7 +54,9 @@ iverilog -g2005 -s tt_um_vga_example -o /tmp/dungeon.vvp src/*.v
 python3 test/test.py
 ```
 
-Run RTL simulations from the repository root: `$readmemh` filenames are relative to the simulator's working directory. Include the four `.mem` files when importing the design into another simulator or synthesis project, and adjust ROM paths if that tool uses a different working directory. `info.yaml` already lists every RTL source.
+Run `python3 test/test.py` from the repository root; it runs `vvp` with `src/` as its working directory. The generator check requires the two original PNGs under `data/bg/` and `data/sprite_rom/`; the game itself only needs the committed `.mem` files. For a manual simulation, use `(cd src && vvp /tmp/dungeon.vvp)` with a suitable testbench. ROM filenames are literal `../data/*.mem` paths: [VGA Playground's GitHub loader](https://github.com/TinyTapeout/vga-playground/blob/main/src/github/loadProject.ts) resolves them relative to `src/` and does not discover filenames passed through Verilog parameters. Keep all four `.mem` files in `data/` and commit them together with the RTL. Do not change the paths to `data/*.mem`, which would make Playground request `src/data/*.mem`.
+
+After pushing updates, reopen the Playground repository URL (or use `&ref=<commit SHA>` to select the exact revision); an already loaded editor does not fetch new ROM files when you edit a filename. `info.yaml` already lists every RTL source.
 
 The tests use the actual serial controller receiver, cover five-room victory, defeat/restarts, health boundaries, guard, potion exhaustion, and held/short presses. A second bench checks nine full VGA frames for timing, blanking, and unknown pixels. Python checks ROM pixels against the captured raster, text and health bars, distinct room maps, and exact 4× scaling. Captures and a contact sheet are written to `test/output/`; frame-sized image storage exists only in these host-side tests.
 

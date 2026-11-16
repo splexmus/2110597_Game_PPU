@@ -1,10 +1,7 @@
 `default_nettype none
 
 // 16 reusable 16x16 tiles and five 10x5 tile maps, not screen-sized images.
-module bg_rom #(
-    parameter TILE_FILE = "../data/bg_tiles.mem",
-    parameter MAP_FILE = "../data/room_maps.mem"
-) (
+module bg_rom (
     input wire clk,
     input wire rst_n,
     input wire [2:0] room,
@@ -15,8 +12,9 @@ module bg_rom #(
     reg [5:0] tiles [0:4095];
     reg [3:0] maps [0:249];
     initial begin
-        $readmemh(TILE_FILE, tiles);
-        $readmemh(MAP_FILE, maps);
+        // Playground discovers ROM downloads from literal filenames only.
+        $readmemh("../data/bg_tiles.mem", tiles);
+        $readmemh("../data/room_maps.mem", maps);
     end
     wire in_room = room < 5 && x < 160 && y >= 16 && y < 96;
     wire [6:0] local_y = y - 7'd16;

@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Run serial gameplay and full-raster RTL checks with Icarus + Pillow."""
 from pathlib import Path
+import re
 import subprocess
 import tempfile
 from PIL import Image
@@ -9,8 +10,8 @@ ROOT = Path(__file__).resolve().parents[1]
 OUTPUT = ROOT / 'test/output'
 
 
-def run(*args):
-    subprocess.run(args, cwd=ROOT, check=True)
+def run(*args, cwd=ROOT):
+    subprocess.run(args, cwd=cwd, check=True)
 
 
 def words(name):
@@ -19,6 +20,17 @@ def words(name):
 
 def rgb(v):
     return tuple(((v >> shift) & 3)*85 for shift in (4,2,0))
+
+
+def check_rom_paths():
+    # Match Playground's literal-only ROM discovery and src-relative paths.
+    sources = '\n'.join(p.read_text() for p in (ROOT/'src').glob('*.v'))
+    paths = re.findall(r'\$readmem[hb]\s*\(\s*"([^"]+)"', sources)
+    assert len(paths) == len(re.findall(r'\$readmem[hb]\s*\(', sources)) == 4
+    targets = {(ROOT/'src'/p).resolve() for p in paths}
+    assert targets == set((ROOT/'data').glob('*.mem'))
+    assert all(p.is_file() for p in targets)
+    print('PASS: Playground discovers all four ROM files relative to src')
 
 
 def check_frames():
@@ -77,13 +89,14 @@ def check_frames():
 
 def main():
     OUTPUT.mkdir(exist_ok=True)
+    check_rom_paths()
     run('python3','scripts/mem_gen.py','--check')
     with tempfile.TemporaryDirectory(prefix='dungeon-') as temp:
         for bench in ('game','video'):
             exe = str(Path(temp)/f'{bench}.vvp')
             run('iverilog','-g2005','-s',f'tb_{bench}','-o',exe,
                 *[str(p.relative_to(ROOT)) for p in sorted((ROOT/'src').glob('*.v'))],f'test/tb_{bench}.v')
-            run('vvp',exe)
+            run('vvp',exe,cwd=ROOT/'src')
     check_frames()
 
 if __name__ == '__main__':

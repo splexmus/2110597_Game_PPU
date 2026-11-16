@@ -1,9 +1,7 @@
 `default_nettype none
 
 // Bit 6 is opacity: black and white are both available as opaque colors.
-module sprite_rom #(
-    parameter MEM_FILE = "../data/sprites.mem"
-) (
+module sprite_rom (
     input wire clk,
     input wire rst_n,
     input wire enable,
@@ -14,7 +12,7 @@ module sprite_rom #(
     output reg opaque
 );
     reg [6:0] pixels [0:3839];
-    initial $readmemh(MEM_FILE, pixels);
+    initial $readmemh("../data/sprites.mem", pixels);
     wire [11:0] address = {8'b0,sprite_id} * 12'd384 + {7'b0,y} * 12'd16 + {8'b0,x};
     always @(posedge clk) begin
         if (!rst_n || !enable || sprite_id >= 10 || y >= 24)

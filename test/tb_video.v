@@ -38,7 +38,7 @@ module tb_video;
             dut.game_logic.charged = scene%2;
             for(y=480;y<525;y=y+1)
                 for(x=0;x<800;x=x+1) sample(x,y);
-            $sformat(filename,"test/output/scene%0d.ppm",scene);
+            $sformat(filename,"../test/output/scene%0d.ppm",scene);
             fd=$fopen(filename,"wb");
             if(fd==0) $fatal(1,"Cannot open frame output");
             $fwrite(fd,"P6\n640 480\n255\n");
