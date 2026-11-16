@@ -151,7 +151,7 @@ module game_logic (
                         .color(sprite_pix), .opaque(sprite_opaque));
 
     reg [4:0] font [0:1023];
-    initial $readmemh("data/font.mem", font);
+    initial $readmemh("../data/font.mem", font);
     reg [207:0] text_line;
     wire [7:0] text_x = draw_x - 8'd2;
     wire [6:0] text_y = draw_y - 7'd2;
