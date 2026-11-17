@@ -48,7 +48,7 @@ def check_frames():
             assert small.resize(frame.size,Image.Resampling.NEAREST).tobytes() == frame.tobytes(), f'Scaling/line timing scene {scene}'
             room = scene-1 if 1 <= scene <= 5 else 3 if scene==6 else 4
             if 1 <= scene <= 6:
-                for y in range(26,96):
+                for y in range(26,94):
                     for x in range(160):
                         if 55 <= y < 57:  # Health bars have separate boundary checks below.
                             continue
@@ -65,8 +65,26 @@ def check_frames():
                         assert small.getpixel((x,y)) == rgb(expected), (scene,x,y,'ROM pixel mismatch')
                 assert small.getpixel((44,55)) == rgb(0x0c)
                 assert small.getpixel((45,55)) == rgb(0x10)
+                for x in range(106,126):
+                    assert small.getpixel((x,55)) == rgb(0x30 if scene<=5 else 0x10)
+                # All seven rows of the lowest status line must fit above a margin.
+                footer={94:'A HIT   B GUARD   Y HEAL',102:'GUARD BLOCKS HEAVY HITS',
+                        110:'ROOM CLEAR - A NEXT' if scene==6 else 'YOUR TURN'}
+                for top,message in footer.items():
+                    for col,char in enumerate(message.center(26)):
+                        for gy in range(8):
+                            for gx in range(6):
+                                ink=gx<5 and font[ord(char)*8+gy] & (1 << (4-gx))
+                                assert small.getpixel((2+col*6+gx,top+gy)) == rgb(0x3f if ink else 1), 'Footer clipping/alignment'
+                assert all(small.getpixel((x,y))==rgb(1) for y in (118,119) for x in range(160))
+                # The widened potion register must also display five correctly.
+                for gy in range(8):
+                    for gx in range(5):
+                        ink=font[ord('5')*8+gy] & (1 << (4-gx))
+                        assert small.getpixel((26+gx,18+gy))==rgb(0x3f if ink else 1)
+
                 header = f'ROOM {room+1}/5  {names[room]}'.ljust(26)
-                status = f'HP 23/30  FOE {6+scene if scene<=5 else 0:02d}'.ljust(26)
+                status = f'HP 23/30  FOE {([6,9,12,15,20][room] if scene<=5 else 0):02d}'.ljust(26)
             else:
                 header = 'FIVE SEALED ROOMS'.center(26)
                 status = ' '*26

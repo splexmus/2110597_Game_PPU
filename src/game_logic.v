@@ -23,7 +23,7 @@ module game_logic (
     reg [2:0] state;
     reg [2:0] room;
     reg [5:0] hp, enemy_hp;
-    reg [1:0] potions;
+    reg [2:0] potions;
     reg charged, guarding;
     reg [3:0] enemy_wait;
     wire frame_tick = pix_x == 0 && pix_y == 480;
@@ -33,6 +33,14 @@ module game_logic (
     wire [3:0] events = pending | edges;
     wire [1:0] action = events[1] ? 2'd1 : events[2] ? 2'd2 : 2'd0;
     wire commit_action = events[0] | events[1] | events[2];
+    function [5:0] room_enemy_hp;
+        input [2:0] room_number;
+        begin
+            room_enemy_hp = room_number == 4 ? 6'd20 : 6'd6 + {3'b0,room_number} * 6'd3;
+        end
+    endfunction
+    wire [5:0] enemy_max_hp = room_enemy_hp(room);
+    wire full_screen_text = state == START || state == WIN || state == GAMEOVER;
     wire [5:0] attack = 6'd4 + {3'b0, room};
     wire [5:0] damage = guarding ? 6'd1 :
                          charged ? ((6'd4 + {3'b0,room}) << 1) : (6'd4 + {3'b0,room});
@@ -42,8 +50,8 @@ module game_logic (
     always @(posedge clk) begin
         if (!rst_n) begin
             previous_buttons <= 0; pending <= 0;
-            state <= START; room <= 0; hp <= 30; enemy_hp <= 6;
-            potions <= 3; charged <= 0;
+            state <= START; room <= 0; hp <= 30; enemy_hp <= room_enemy_hp(3'd0);
+            potions <= 3'd5; charged <= 0;
             guarding <= 0; enemy_wait <= 0;
         end else begin
             previous_buttons <= buttons;
@@ -51,8 +59,8 @@ module game_logic (
             if (frame_tick) begin
                 pending <= 0;
                 if (events[3] || ((state == START || state == WIN || state == GAMEOVER) && events[0])) begin
-                    state <= PLAYER; room <= 0; hp <= 30; enemy_hp <= 6;
-                    potions <= 3; charged <= 0;
+                    state <= PLAYER; room <= 0; hp <= 30; enemy_hp <= room_enemy_hp(3'd0);
+                    potions <= 3'd5; charged <= 0;
                     guarding <= 0; enemy_wait <= 0;
                 end else case (state)
                     START, WIN, GAMEOVER: begin end
@@ -93,7 +101,7 @@ module game_logic (
                     end
                     CLEAR: if (events[0]) begin
                         room <= room + 1'b1;
-                        enemy_hp <= room == 3 ? 6'd20 : 6'd9 + {3'b0,room} * 6'd3;
+                        enemy_hp <= room_enemy_hp(room + 3'd1);
                         hp <= hp >= 26 ? 6'd30 : hp + 6'd4;
                         charged <= 0; guarding <= 0;
                         state <= PLAYER;
@@ -153,7 +161,7 @@ module game_logic (
     initial $readmemh("../data/font.mem", font);
     reg [207:0] text_line;
     wire [7:0] text_x = draw_x - 8'd2;
-    wire [6:0] text_y = draw_y - 7'd2;
+    wire [6:0] text_y = draw_y >= 94 && !full_screen_text ? draw_y + 7'd2 : draw_y - 7'd2;
     wire [7:0] text_col = text_x / 8'd6;
     wire [7:0] glyph_x = text_x % 8'd6;
     wire [7:0] character = text_col < 26 ? text_line[207 - text_col*8 -: 8] : 8'd32;
@@ -180,8 +188,8 @@ module game_logic (
                 text_line[87 -: 8] = 8'd48 + {2'b0,enemy_hp} % 8'd10;
             end
             2: begin
-                text_line = charged ? "POT 3  FOE: HEAVY         " : "POT 3  FOE: STRIKE        ";
-                text_line[175 -: 8] = 8'd48 + {6'b0,potions};
+                text_line = charged ? "POT 5  FOE: HEAVY         " : "POT 5  FOE: STRIKE        ";
+                text_line[175 -: 8] = 8'd48 + {5'b0,potions};
             end
             12: text_line = " A HIT   B GUARD   Y HEAL ";
             13: text_line = " GUARD BLOCKS HEAVY HITS  ";
@@ -227,8 +235,8 @@ module game_logic (
             endcase
         end
         composed = sprite_opaque ? sprite_pix : bg_pix;
-        if (draw_y < 26 || draw_y >= 96) composed = 6'h01;
-        if (state == START || state == WIN || state == GAMEOVER) begin
+        if (draw_y < 26 || draw_y >= 94) composed = 6'h01;
+        if (full_screen_text) begin
             composed = 6'h00;
         end else begin
             // Health meters above the two combatants.
@@ -236,7 +244,9 @@ module game_logic (
                 if (draw_x >= 22 && draw_x < 52)
                     composed = (draw_x - 8'd22 < {2'b0,hp}) ? 6'h0c : 6'h10;
                 if (draw_x >= 106 && draw_x < 126)
-                    composed = (draw_x - 8'd106 < {2'b0,enemy_hp}) ? 6'h30 : 6'h10;
+                    // Cross-multiply to scale to max HP without a hardware divider.
+                    composed = (({3'b0,draw_x} - 11'd106) * {5'b0,enemy_max_hp} <
+                                {5'b0,enemy_hp} * 11'd20) ? 6'h30 : 6'h10;
             end
         end
         if (ink) composed = state == GAMEOVER ? 6'h35 : state == WIN ? 6'h3c : 6'h3f;

@@ -15,7 +15,7 @@ Use the existing serial Gamepad Pmod on `ui_in[6]` (data), `[5]` (clock), and `[
 
 Release a button before pressing it again. Holding a button does not repeat turns. Each action has its own button; directional buttons do nothing. Inputs during the enemy animation are ignored. If action buttons arrive together, B has priority over potion, then A.
 
-- Start with **30 HP and 3 potions**. Enemy HP across the five rooms is **6, 9, 12, 15, 20**.
+- Start with **30 HP and 5 potions**. Enemy HP across the five rooms is **6, 9, 12, 15, 20**. Each enemy bar starts full and shrinks in proportion to its own maximum HP.
 - Hit deals **4 + room index** damage (4 through 8).
 - Guard counters for **3 damage** and reduces the next enemy hit to **1**.
 - A potion restores up to **12 HP** and spends a turn. Full-health or empty-potion attempts spend nothing.
@@ -26,7 +26,7 @@ The starter's scrolling/forced-win/forced-loss TODO was replaced by room progres
 
 ## Graphics and memory
 
-The physical raster is **640×480**, with 800 clocks per line and 525 lines per frame. The game renders at **160×120**, with exact 4× nearest-neighbor scaling. START, WIN, and GAMEOVER cover the full display with black behind their text. The five rooms use blue stone, ash stone, teal crypt walls, purple keep walls, and a carpeted throne room.
+The physical raster is **640×480**, with 800 clocks per line and 525 lines per frame. The game renders at **160×120**, with exact 4× nearest-neighbor scaling. Combat footer text starts at logical rows 94, 102, and 110, leaving space below the final line. START, WIN, and GAMEOVER cover the full display with black behind their text. The five rooms use blue stone, ash stone, teal crypt walls, purple keep walls, and a carpeted throne room.
 
 There is exactly **one writable 160×6-bit scanline buffer (960 bits / 120 bytes)**. There is no full-frame pixel RAM and no second scanline buffer. The background is a tile map, rather than a stored image of the screen.
 

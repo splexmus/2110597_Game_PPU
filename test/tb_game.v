@@ -43,12 +43,30 @@ module tb_game;
             check(dut.state != 2, "Enemy turn did not finish");
         end
     endtask
+    task check_enemy_bar;
+        input [2:0] room_number;
+        input [5:0] current_hp, max_hp;
+        integer px, filled;
+        begin
+            @(negedge clk); dut.room=room_number; dut.enemy_hp=current_hp; dut.state=1;
+            y=219;
+            for(px=638;px<800;px=px+1) begin
+                x=px;
+                @(negedge clk);
+            end
+            x=0; y=0;
+            filled=(current_hp*20+max_hp-1)/max_hp;
+            check(dut.enemy_max_hp==max_hp,"Enemy maximum matches room encounter");
+            for(px=0;px<20;px=px+1)
+                check(dut.line_buffer[106+px]==(px<filled ? 6'h30 : 6'h10),"Enemy bar is proportional to max HP");
+        end
+    endtask
     initial begin
         repeat(4) @(negedge clk); rst_n=1; tick;
         check(dut.state==0,"Reset must stay on title");
         press(12'hfff); check(dut.state==0,"Absent controller must not press buttons");
         press(12'h008); check(dut.state==1 && dut.hp==30,"A starts game");
-        press(12'h400); check(dut.state==1 && dut.potions==3,"Full-health potion is a no-op");
+        press(12'h400); check(dut.state==1 && dut.potions==5,"Full-health potion is a no-op");
         press(12'h020); check(dut.state==1 && dut.hp==30 && dut.enemy_hp==6,"Left does not select or act");
         press(12'h010); check(dut.state==1 && dut.hp==30 && dut.enemy_hp==6,"Right does not select or act");
         // A held across many frames causes exactly one attack.
@@ -63,10 +81,10 @@ module tb_game;
         press(12'h008); check(dut.room==1 && dut.hp==30 && dut.enemy_hp==9,"Next room reward");
         press(12'h800); finish_enemy;
         check(dut.hp==29 && dut.enemy_hp==6,"B guard counter and reduced damage");
-        press(12'h400); check(dut.potions==2 && dut.hp==30,"Y potion caps healing at 30");
+        press(12'h400); check(dut.potions==4 && dut.hp==30,"Y potion caps healing at 30");
         finish_enemy; check(dut.hp==20,"Potion consumes a turn; heavy hit doubles damage");
         // Guard telegraphed heavy hits and clear all five rooms.
-        press(12'h100); check(dut.room==0 && dut.hp==30 && dut.potions==3,"Start fully resets run");
+        press(12'h100); check(dut.room==0 && dut.hp==30 && dut.potions==5,"Start fully resets run");
         turns=0;
         while(dut.state != 4 && turns < 40) begin
             if(dut.state==1 && dut.charged && dut.enemy_hp > dut.attack) press(12'h800);
@@ -107,6 +125,20 @@ module tb_game;
             press(12'h008); finish_enemy;
             check(dut.hp==22-2*i,"Room heavy damage doubles normal damage");
         end
+        // Every room starts with a full-width bar and scales down to empty.
+        for(i=0;i<5;i=i+1) begin
+            check_enemy_bar(i, i==4 ? 20 : 6+3*i, i==4 ? 20 : 6+3*i);
+            check_enemy_bar(i, (i==4 ? 20 : 6+3*i)/2, i==4 ? 20 : 6+3*i);
+            check_enemy_bar(i, 1, i==4 ? 20 : 6+3*i);
+            check_enemy_bar(i, 0, i==4 ? 20 : 6+3*i);
+        end
+        press(12'h100);
+        for(i=0;i<5;i=i+1) begin
+            @(negedge clk); dut.hp=10;
+            press(12'h400); finish_enemy;
+            check(dut.potions==4-i,"All five potions can be used without wrapping");
+        end
+        press(12'h400); check(dut.state==1 && dut.potions==0,"Sixth potion is a no-op");
         // A short press entirely between frame ticks is retained.
         press(12'h100);
         packet(12'h008); packet(0); tick;
