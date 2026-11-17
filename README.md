@@ -24,6 +24,10 @@ Release a button before pressing it again. Holding a button does not repeat turn
 
 The starter's scrolling/forced-win/forced-loss TODO was replaced by room progression and combat. B and Y are gameplay actions.
 
+## VGA Playground
+
+Open the repository in the [VGA Playground](https://vga-playground.com/?repo=https://github.com/splexmus/2110597_Game_PPU).
+
 ## Graphics and memory
 
 The physical raster is **640×480**, with 800 clocks per line and 525 lines per frame. The game renders at **160×120**, with exact 4× nearest-neighbor scaling. Combat footer text starts at logical rows 94, 102, and 110, leaving space below the final line. START, WIN, and GAMEOVER cover the full display with black behind their text. The five rooms use blue stone, ash stone, teal crypt walls, purple keep walls, and a carpeted throne room.
