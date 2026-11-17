@@ -33,13 +33,7 @@ module game_logic (
     wire [3:0] events = pending | edges;
     wire [1:0] action = events[1] ? 2'd1 : events[2] ? 2'd2 : 2'd0;
     wire commit_action = events[0] | events[1] | events[2];
-    function [5:0] room_enemy_hp;
-        input [2:0] room_number;
-        begin
-            room_enemy_hp = room_number == 4 ? 6'd20 : 6'd6 + {3'b0,room_number} * 6'd3;
-        end
-    endfunction
-    wire [5:0] enemy_max_hp = room_enemy_hp(room);
+    wire [5:0] enemy_max_hp = room == 3'd4 ? 6'd20 : 6'd6 + {3'b0,room} * 6'd3;
     wire full_screen_text = state == START || state == WIN || state == GAMEOVER;
     wire [5:0] attack = 6'd4 + {3'b0, room};
     wire [5:0] damage = guarding ? 6'd1 :
@@ -50,7 +44,7 @@ module game_logic (
     always @(posedge clk) begin
         if (!rst_n) begin
             previous_buttons <= 0; pending <= 0;
-            state <= START; room <= 0; hp <= 30; enemy_hp <= room_enemy_hp(3'd0);
+            state <= START; room <= 0; hp <= 30; enemy_hp <= 6'd6;
             potions <= 3'd5; charged <= 0;
             guarding <= 0; enemy_wait <= 0;
         end else begin
@@ -59,7 +53,7 @@ module game_logic (
             if (frame_tick) begin
                 pending <= 0;
                 if (events[3] || ((state == START || state == WIN || state == GAMEOVER) && events[0])) begin
-                    state <= PLAYER; room <= 0; hp <= 30; enemy_hp <= room_enemy_hp(3'd0);
+                    state <= PLAYER; room <= 0; hp <= 30; enemy_hp <= 6'd6;
                     potions <= 3'd5; charged <= 0;
                     guarding <= 0; enemy_wait <= 0;
                 end else case (state)
@@ -101,7 +95,7 @@ module game_logic (
                     end
                     CLEAR: if (events[0]) begin
                         room <= room + 1'b1;
-                        enemy_hp <= room_enemy_hp(room + 3'd1);
+                        enemy_hp <= room == 3'd3 ? 6'd20 : 6'd9 + {3'b0,room} * 6'd3;
                         hp <= hp >= 26 ? 6'd30 : hp + 6'd4;
                         charged <= 0; guarding <= 0;
                         state <= PLAYER;
