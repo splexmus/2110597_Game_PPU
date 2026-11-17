@@ -8,13 +8,13 @@ module game_logic (
     input wire [9:0] pix_y,
     output reg [5:0] RGB
 );
-    wire inp_b, inp_y, inp_start, inp_left, inp_right, inp_a, inp_x;
-    wire [5:0] unused_buttons;
+    wire inp_b, inp_y, inp_start, inp_a, inp_x;
+    wire [7:0] unused_buttons;
     gamepad_pmod_single driver (
         .rst_n(rst_n), .clk(clk), .pmod_data(ui_in[6]),
         .pmod_clk(ui_in[5]), .pmod_latch(ui_in[4]),
         .b(inp_b), .y(inp_y), .select(unused_buttons[0]), .start(inp_start),
-        .up(unused_buttons[1]), .down(unused_buttons[2]), .left(inp_left), .right(inp_right),
+        .up(unused_buttons[1]), .down(unused_buttons[2]), .left(unused_buttons[6]), .right(unused_buttons[7]),
         .a(inp_a), .x(inp_x), .l(unused_buttons[3]), .r(unused_buttons[4]), .is_present(unused_buttons[5])
     );
 
@@ -23,19 +23,19 @@ module game_logic (
     reg [2:0] state;
     reg [2:0] room;
     reg [5:0] hp, enemy_hp;
-    reg [1:0] potions, selection;
+    reg [1:0] potions;
     reg charged, guarding;
     reg [3:0] enemy_wait;
     wire frame_tick = pix_x == 0 && pix_y == 480;
-    wire [6:0] buttons = {inp_start, inp_y | inp_x, inp_b, inp_a, inp_right, inp_left, 1'b0};
-    reg [6:0] previous_buttons, pending;
-    wire [6:0] edges = buttons & ~previous_buttons;
-    wire [6:0] events = pending | edges;
-    wire [1:0] action = events[4] ? 2'd1 : events[5] ? 2'd2 : selection;
-    wire commit_action = events[3] | events[4] | events[5];
+    wire [3:0] buttons = {inp_start, inp_y | inp_x, inp_b, inp_a};
+    reg [3:0] previous_buttons, pending;
+    wire [3:0] edges = buttons & ~previous_buttons;
+    wire [3:0] events = pending | edges;
+    wire [1:0] action = events[1] ? 2'd1 : events[2] ? 2'd2 : 2'd0;
+    wire commit_action = events[0] | events[1] | events[2];
     wire [5:0] attack = 6'd4 + {3'b0, room};
     wire [5:0] damage = guarding ? 6'd1 :
-                         charged ? ((6'd2 + {3'b0,room}) << 1) : (6'd2 + {3'b0,room});
+                         charged ? ((6'd4 + {3'b0,room}) << 1) : (6'd4 + {3'b0,room});
 
     // Capture short presses between frames; held buttons never repeat actions.
     // State changes only in vertical blank, so every scanline sees one turn.
@@ -43,22 +43,20 @@ module game_logic (
         if (!rst_n) begin
             previous_buttons <= 0; pending <= 0;
             state <= START; room <= 0; hp <= 30; enemy_hp <= 6;
-            potions <= 3; selection <= 0; charged <= 0;
+            potions <= 3; charged <= 0;
             guarding <= 0; enemy_wait <= 0;
         end else begin
             previous_buttons <= buttons;
             pending <= pending | edges;
             if (frame_tick) begin
                 pending <= 0;
-                if (events[6] || ((state == START || state == WIN || state == GAMEOVER) && events[3])) begin
+                if (events[3] || ((state == START || state == WIN || state == GAMEOVER) && events[0])) begin
                     state <= PLAYER; room <= 0; hp <= 30; enemy_hp <= 6;
-                    potions <= 3; selection <= 0; charged <= 0;
+                    potions <= 3; charged <= 0;
                     guarding <= 0; enemy_wait <= 0;
                 end else case (state)
                     START, WIN, GAMEOVER: begin end
                     PLAYER: begin
-                        if (events[1]) selection <= selection == 0 ? 2'd2 : selection - 1'b1;
-                        else if (events[2]) selection <= selection == 2 ? 2'd0 : selection + 1'b1;
                         if (commit_action) begin
                             guarding <= action == 1;
                             if (action == 0) begin
@@ -93,11 +91,11 @@ module game_logic (
                             else begin hp <= hp - damage; state <= PLAYER; end
                         end
                     end
-                    CLEAR: if (events[3]) begin
+                    CLEAR: if (events[0]) begin
                         room <= room + 1'b1;
                         enemy_hp <= room == 3 ? 6'd20 : 6'd9 + {3'b0,room} * 6'd3;
                         hp <= hp >= 26 ? 6'd30 : hp + 6'd4;
-                        selection <= 0; charged <= 0; guarding <= 0;
+                        charged <= 0; guarding <= 0;
                         state <= PLAYER;
                     end
                     default: state <= START;
@@ -161,7 +159,7 @@ module game_logic (
     wire [7:0] character = text_col < 26 ? text_line[207 - text_col*8 -: 8] : 8'd32;
     wire [4:0] glyph_row = font[{character[6:0],text_y[2:0]}];
     wire ink = draw_x >= 2 && draw_x < 158 && glyph_x < 5 && glyph_row[4-glyph_x];
-    wire _unused_ok = &{ui_in[7], ui_in[3:0], events[0], fetch_offset[9:8], character[7]};
+    wire _unused_ok = &{ui_in[7], ui_in[3:0], fetch_offset[9:8], character[7]};
     reg [5:0] composed;
     always @* begin
         text_line = "                          ";
@@ -185,8 +183,8 @@ module game_logic (
                 text_line = charged ? "POT 3  FOE: HEAVY         " : "POT 3  FOE: STRIKE        ";
                 text_line[175 -: 8] = 8'd48 + {6'b0,potions};
             end
-            12: text_line = " HIT    GUARD    POTION   ";
-            13: text_line = "A USE   B GUARD   Y HEAL  ";
+            12: text_line = " A HIT   B GUARD   Y HEAL ";
+            13: text_line = " GUARD BLOCKS HEAVY HITS  ";
             14: begin
                 if (state == ENEMY) text_line = "      ENEMY TURN...       ";
                 else if (state == CLEAR) text_line = "   ROOM CLEAR - A NEXT    ";
@@ -200,7 +198,7 @@ module game_logic (
                 0: text_line = "    FIVE SEALED ROOMS     ";
                 4: text_line = "    A MEDIEVAL DUNGEON    ";
                 6: text_line = "        A TO ENTER        ";
-                8: text_line = " LEFT RIGHT CHOOSE ACTION ";
+                8: text_line = "  A HIT  B GUARD  Y HEAL  ";
                 10: text_line = " GUARD THE HEAVY STRIKES  ";
                 13: text_line = " START RESTARTS ANY TIME  ";
                 default: begin end
@@ -231,12 +229,8 @@ module game_logic (
         composed = sprite_opaque ? sprite_pix : bg_pix;
         if (draw_y < 26 || draw_y >= 96) composed = 6'h01;
         if (state == START || state == WIN || state == GAMEOVER) begin
-            if (draw_y >= 28 && draw_y < 92) composed = 6'h01;
+            composed = 6'h00;
         end else begin
-            if (draw_y >= 97 && draw_y < 105 && state == PLAYER &&
-                ((selection == 0 && draw_x < 44) ||
-                 (selection == 1 && draw_x >= 44 && draw_x < 92) ||
-                 (selection == 2 && draw_x >= 92))) composed = 6'h16;
             // Health meters above the two combatants.
             if (draw_y >= 55 && draw_y < 57) begin
                 if (draw_x >= 22 && draw_x < 52)

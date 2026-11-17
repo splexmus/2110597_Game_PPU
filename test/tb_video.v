@@ -30,11 +30,10 @@ module tb_video;
         for(scene=0;scene<9;scene=scene+1) begin
             // Fixed scene fixtures set in vertical blank; raster runs normally.
             dut.game_logic.state = scene==0 ? 0 : scene<=5 ? 1 : scene==6 ? 3 : scene==7 ? 4 : 5;
-            dut.game_logic.room = scene>=1 && scene<=5 ? scene-1 : 4;
+            dut.game_logic.room = scene>=1 && scene<=5 ? scene-1 : scene==6 ? 3 : 4;
             dut.game_logic.hp = scene==8 ? 0 : 23;
             dut.game_logic.enemy_hp = scene>=6 ? 0 : 6+scene;
             dut.game_logic.potions = 2;
-            dut.game_logic.selection = scene%3;
             dut.game_logic.charged = scene%2;
             for(y=480;y<525;y=y+1)
                 for(x=0;x<800;x=x+1) sample(x,y);

@@ -2,7 +2,7 @@
 """Rebuild compact RGB222 tile/sprite/font ROMs; never emit a framebuffer."""
 from pathlib import Path
 import argparse
-from PIL import Image, ImageDraw, ImageEnhance
+from PIL import Image, ImageDraw
 
 ROOT = Path(__file__).resolve().parents[1]
 OUT = ROOT / 'data'
@@ -55,28 +55,82 @@ def rgb222(pixel):
     return (r << 4) | (g << 2) | b
 
 
-def crop(im, box, size, opaque=False):
+def crop(im, box, size):
     assert 0 <= box[0] < box[2] <= im.width and 0 <= box[1] < box[3] <= im.height
     part = im.crop(box).resize(size, Image.Resampling.NEAREST)
-    if opaque:
-        base = Image.new('RGBA', size, (32, 28, 56, 255))
-        base.alpha_composite(part)
-        part = ImageEnhance.Brightness(base).enhance(1.5)
     return part
 
 
+def build_background():
+    tiles = []
+    # Four stone palettes share a staggered block pattern at native resolution.
+    for base, edge in [('#000055','#555555'), ('#550055','#555555'),
+                       ('#005555','#555555'), ('#555555','#5555aa')]:
+        im = Image.new('RGBA',(16,16),base); d = ImageDraw.Draw(im)
+        for y in (0,8):
+            d.line((0,y,15,y),fill='#000000')
+            d.line((1,y+1,14,y+1),fill=edge)
+        d.line((7,0,7,7),fill='#000000'); d.line((15,8,15,15),fill='#000000')
+        tiles.append(im)
+    pillar = tiles[0].copy(); d = ImageDraw.Draw(pillar)
+    d.rectangle((3,0,12,15), fill='#555555')
+    d.rectangle((5,0,7,15), fill='#aaaaaa')
+    d.line((12,0,12,15),fill='#000000')
+    tiles.append(pillar)
+    arch = tiles[0].copy(); d = ImageDraw.Draw(arch)
+    d.polygon([(3,15),(3,10),(6,5),(11,2),(15,2),(15,15)],fill='#aaaaaa')
+    d.polygon([(7,15),(7,11),(10,7),(15,6),(15,15)],fill='#000000')
+    tiles.extend([arch,arch.transpose(Image.Transpose.FLIP_LEFT_RIGHT)])
+    for color in ('#aa0000','#5500aa'):
+        im=tiles[0].copy(); d=ImageDraw.Draw(im)
+        d.line((2,1,13,1),fill='#aaaa55')
+        d.polygon([(4,2),(11,2),(11,12),(8,15),(4,12)],fill=color)
+        d.line((7,4,7,10),fill='#ffaa00'); d.line((5,6,9,6),fill='#ffaa00')
+        tiles.append(im)
+    for i in range(3):
+        im=Image.new('RGBA',(16,16),'#555500' if i==2 else '#555555'); d=ImageDraw.Draw(im)
+        d.rectangle((0,0,15,15),outline='#000000')
+        d.line((1,1,14,1),fill='#aa5500' if i==2 else '#aaaaaa')
+        d.point((11,11),fill='#000000'); d.point((3,6),fill='#000000')
+        if i==1: d.line((10,0,8,4,10,7,8,10),fill='#000000')
+        tiles.append(im)
+    carpet=tiles[9].copy(); d=ImageDraw.Draw(carpet)
+    d.rectangle((2,0,15,15),fill='#aa0000'); d.line((3,0,3,15),fill='#ffaa00')
+    for y in (3,11): d.rectangle((6,y,7,y+1),fill='#aa5500')
+    tiles.extend([carpet,carpet.transpose(Image.Transpose.FLIP_LEFT_RIGHT)])
+    window=tiles[0].copy(); d=ImageDraw.Draw(window)
+    d.polygon([(4,13),(4,6),(8,2),(11,6),(11,13)],fill='#000000',outline='#aaaaaa')
+    d.polygon([(6,11),(6,6),(8,4),(9,6),(9,11)],fill='#0055aa')
+    d.line((8,5,8,12),fill='#000000'); d.line((5,9,10,9),fill='#000000')
+    tiles.append(window)
+    skull=tiles[2].copy(); d=ImageDraw.Draw(skull)
+    d.rectangle((5,4,10,9),fill='#aaaaaa'); d.rectangle((6,10,9,11),fill='#aaaaaa')
+    d.point((6,6),fill='black'); d.point((9,6),fill='black'); d.line((7,9,8,9),fill='black')
+    tiles.append(skull)
+    maps=[]
+    for room in range(5):
+        wall=[0,3,2,1,3][room]
+        for row in range(5):
+            for col in range(10):
+                tile=wall
+                if row>=3:
+                    tile=11 if room==3 else 10 if (col+row+room)%4==0 else 9
+                    if room==4 and col in (4,5): tile=12+col-4
+                elif col in (0,9): tile=4
+                elif row==1 and col in (4,5): tile=5+col-4
+                elif row==1 and col in (2,7): tile=[14,15,14,7,8][room]
+                elif row==2 and col in (1,8) and room in (1,2): tile=15
+                maps.append(tile)
+    tile_words=[rgb222(im.getpixel((x,y))) for im in tiles for y in range(16) for x in range(16)]
+    assert len(tiles)==16 and len(tile_words)==4096 and max(tile_words)<64
+    assert len(maps)==250 and max(maps)<16
+    assert len({tuple(maps[r*50:(r+1)*50]) for r in range(5)})==5
+    return tile_words,maps,tiles
+
+
 def build():
-    bg = Image.open(OUT / 'bg/Medieval_tiles_free2.png').convert('RGBA')
+    tile_words,maps,tiles = build_background()
     props = Image.open(OUT / 'sprite_rom/Medieval_props_free.png').convert('RGBA')
-    boxes = [(64,32,96,64), (160,432,192,464), (96,608,128,640),
-             (16,400,48,432), (400,416,432,448), (456,16,488,48),
-             (320,592,352,624), (640,64,672,96)]
-    tiles = [crop(bg, box, (16,16), True) for box in boxes]
-    # Alternate palettes keep all five rooms visually distinct while sharing art.
-    for tile in tiles[:]:
-        variant = tile.copy()
-        variant.putdata([(b, min(255,g+30), r//2, a) for r,g,b,a in (tile.getpixel((x,y)) for y in range(tile.height) for x in range(tile.width))])
-        tiles.append(variant)
     sprites = []
     for kind in range(6):
         im = Image.new('RGBA', (16,24)); d = ImageDraw.Draw(im)
@@ -109,17 +163,7 @@ def build():
                 crop(props,(329,65,354,87),(16,24)),
                 crop(props,(431,117,459,145),(16,24)),
                 crop(props,(443,58,470,88),(16,24))]
-    tile_words = [rgb222(p) for im in tiles for p in (im.getpixel((x,y)) for y in range(im.height) for x in range(im.width))]
     sprite_words = [(0x40 if p[3] >= 128 else 0) | rgb222(p) for im in sprites for p in (im.getpixel((x,y)) for y in range(im.height) for x in range(im.width))]
-    maps = []
-    for room in range(5):
-        wall = [1,4,9,12,7][room]; floor = [2,6,10,14,6][room]
-        for row in range(5):
-            for col in range(10):
-                tile = wall if row < 4 else floor
-                if col in (0,9): tile = 3 if room < 2 else 11
-                if row == 2 and col in ([2,7] if room % 2 else [1,8]): tile = 7
-                maps.append(tile)
     font_words = []
     for code in range(128):
         rows = FONT.get(chr(code), ['00000']*7)
@@ -134,14 +178,27 @@ def build():
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--check', action='store_true', help='verify committed ROMs match the PNGs and generator')
+    parser.add_argument('--check', action='store_true', help='verify committed ROMs match the generator')
+    parser.add_argument('--background-only', action='store_true', help='rebuild room tiles/maps while preserving existing sprite and font ROMs')
     args = parser.parse_args()
-    memories, tiles, sprites = build()
+    if args.background_only:
+        tile_words,maps,tiles = build_background()
+        memories = {'bg_tiles.mem':tile_words, 'room_maps.mem':maps}
+        pixels = [int(v,16) for v in (OUT/'sprites.mem').read_text().split()]
+        assert len(pixels)==3840 and all(0<=v<128 for v in pixels)
+        sprites=[]
+        for i in range(10):
+            im=Image.new('RGBA',(16,24))
+            im.putdata([(((v>>4)&3)*85,((v>>2)&3)*85,(v&3)*85,255 if v&64 else 0)
+                        for v in pixels[i*384:(i+1)*384]])
+            sprites.append(im)
+    else:
+        memories, tiles, sprites = build()
     for name, words in memories.items():
         width = 1 if name == 'room_maps.mem' else 2
         data = ''.join(f'{v:0{width}x}\n' for v in words)
         if args.check:
-            assert (OUT/name).read_text() == data, f'{name} is stale; run scripts/mem_gen.py'
+            assert (OUT/name).read_text() == data, f'{name} is stale; rerun this command without --check'
         else:
             (OUT/name).write_text(data)
         print(f'{name}: {len(words)} words')

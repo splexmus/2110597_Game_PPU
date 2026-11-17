@@ -46,7 +46,7 @@ def check_frames():
             small = frame.resize((160,120),Image.Resampling.NEAREST)
             # Every pixel must be replicated exactly 4x4, including line ends.
             assert small.resize(frame.size,Image.Resampling.NEAREST).tobytes() == frame.tobytes(), f'Scaling/line timing scene {scene}'
-            room = scene-1 if 1 <= scene <= 5 else 4
+            room = scene-1 if 1 <= scene <= 5 else 3 if scene==6 else 4
             if 1 <= scene <= 6:
                 for y in range(26,96):
                     for x in range(160):
@@ -77,8 +77,26 @@ def check_frames():
                     for gy in range(8):
                         for gx in range(6):
                             ink = gx<5 and font[ord(char)*8+gy] & (1 << (4-gx))
-                            expected = rgb(text_color if ink else 1)
+                            expected = rgb(text_color if ink else (1 if 1<=scene<=6 else 0))
                             assert small.getpixel((2+col*6+gx,2+row*8+gy)) == expected, (scene,row,col,gx,gy,'font/HUD mismatch')
+            if scene in (0,7,8):
+                # Compare every pixel, including borders and gaps between text bands.
+                messages={0:'FIVE SEALED ROOMS'}
+                if scene==0:
+                    messages.update({4:'A MEDIEVAL DUNGEON',6:'A TO ENTER',8:'A HIT  B GUARD  Y HEAL',
+                                     10:'GUARD THE HEAVY STRIKES',13:'START RESTARTS ANY TIME'})
+                elif scene==7:
+                    messages.update({4:'DUNGEON CLEARED',6:'THE CROWN IS YOURS',8:'ALL FIVE ROOMS ARE SAFE',10:'A TO PLAY AGAIN'})
+                else:
+                    messages.update({4:'YOU HAVE FALLEN',6:'THE DUNGEON REMAINS',8:'GUARD OR HEAL NEXT TIME',10:'A TO TRY AGAIN'})
+                expected_screen=Image.new('RGB',(160,120))
+                for row,message in messages.items():
+                    for col,char in enumerate(message.center(26)):
+                        for gy in range(7):
+                            for gx in range(5):
+                                if font[ord(char)*8+gy] & (1 << (4-gx)):
+                                    expected_screen.putpixel((2+col*6+gx,2+row*8+gy),rgb(text_color))
+                assert small.tobytes()==expected_screen.tobytes(), f'Nonblack background or incorrect text in scene {scene}'
             frame.save(OUTPUT/f'scene{scene}.png')
             previews.append(frame.copy())
     montage = Image.new('RGB',(640*3,480*3))
@@ -90,7 +108,10 @@ def check_frames():
 def main():
     OUTPUT.mkdir(exist_ok=True)
     check_rom_paths()
-    run('python3','scripts/mem_gen.py','--check')
+    run('python3','scripts/mem_gen.py','--background-only','--check')
+    for name,count,limit in [('sprites.mem',3840,128),('font.mem',1024,32)]:
+        values=words(name)
+        assert len(values)==count and all(0<=v<limit for v in values)
     with tempfile.TemporaryDirectory(prefix='dungeon-') as temp:
         for bench in ('game','video'):
             exe = str(Path(temp)/f'{bench}.vvp')
