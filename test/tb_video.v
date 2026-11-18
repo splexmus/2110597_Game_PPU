@@ -34,6 +34,7 @@ module tb_video;
             dut.game_logic.hp = scene==8 ? 0 : 23;
             dut.game_logic.enemy_hp = scene>=6 ? 0 : scene==5 ? 20 : 3+3*scene;
             dut.game_logic.potions = 5;
+            dut.game_logic.idle_counter = 0;
             dut.game_logic.charged = scene%2;
             for(y=480;y<525;y=y+1)
                 for(x=0;x<800;x=x+1) sample(x,y);

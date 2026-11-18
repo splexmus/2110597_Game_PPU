@@ -60,7 +60,8 @@ def check_frames():
                         if room % 2: objects.append((9,8,64))
                         for sprite, sx, sy in objects:
                             if sx <= x < sx+16 and sy <= y < sy+24:
-                                value = sprites[sprite*384+(y-sy)*16+x-sx]
+                                local_x=15-(x-sx) if 1<=sprite<=5 else x-sx
+                                value = sprites[sprite*384+(y-sy)*16+local_x]
                                 if value & 64: expected = value & 63
                         assert small.getpixel((x,y)) == rgb(expected), (scene,x,y,'ROM pixel mismatch')
                 assert small.getpixel((44,55)) == rgb(0x0c)
@@ -123,6 +124,40 @@ def check_frames():
     print('PASS: five distinct maps, ROM pixel composition, text, HP bars and exact 4x scaling')
 
 
+def check_animations():
+    previews=[]
+    for room in range(5):
+        frames=[]
+        for phase in range(14):
+            with Image.open(OUTPUT/f'animation_{room}_{phase}.ppm') as image:
+                frames.append(image.copy())
+        assert frames[0].crop((28,58,44,85)).tobytes()!=frames[2].crop((28,58,44,85)).tobytes(), 'Hero idle must move'
+        assert frames[0].crop((108,58,124,85)).tobytes()!=frames[1].crop((108,58,124,85)).tobytes(), 'Enemy idle must move'
+        assert frames[6].getpixel((99,72))==rgb(0x3f), 'Hero attack sword'
+        assert frames[6].getpixel((115,74))==rgb(0x16), 'Enemy defensive pose'
+        assert frames[9].getpixel((36,74))==rgb(0x16), 'Hero defensive pose'
+        if room in (1,3,4):
+            assert frames[9].getpixel((52,72))==rgb(0x3f), 'Enemy attack sword faces left'
+        assert frames[10].getpixel((41,72))==rgb(0x0f), 'Successful guard barrier'
+        assert frames[11].getpixel((96,74))==rgb(0x16), 'Guard counter pose'
+        assert frames[12].getpixel((35,73))==rgb(0x0c), 'Healing pose'
+        for frame in frames:
+            for y in range(26,94):
+                for x in range(160):
+                    if not (24<=x<128 and 59<=y<84):
+                        assert frame.getpixel((x,y))==frames[0].getpixel((x,y)), 'Animation changed scenery or health bars'
+        expanded=[frame.resize((640,480),Image.Resampling.NEAREST) for frame in frames]
+        expanded[0].save(OUTPUT/f'animation_room{room+1}.gif',save_all=True,append_images=expanded[1:],
+                         duration=[240]*4+[100]*8+[200,240],loop=0,disposal=2)
+        previews.append(frames)
+    sheet=Image.new('RGB',(160*5,120*4))
+    for room,frames in enumerate(previews):
+        for row,phase in enumerate((0,6,9,10)):
+            sheet.paste(frames[phase],(room*160,row*120))
+    sheet.resize((1600,960),Image.Resampling.NEAREST).save(OUTPUT/'animation_preview.png')
+    print('PASS: idle, attack, defensive and healing poses for hero and all five enemies; scenery preserved')
+
+
 def main():
     OUTPUT.mkdir(exist_ok=True)
     check_rom_paths()
@@ -131,12 +166,13 @@ def main():
         values=words(name)
         assert len(values)==count and all(0<=v<limit for v in values)
     with tempfile.TemporaryDirectory(prefix='dungeon-') as temp:
-        for bench in ('game','video'):
+        for bench in ('game','video','animation'):
             exe = str(Path(temp)/f'{bench}.vvp')
             run('iverilog','-g2005','-s',f'tb_{bench}','-o',exe,
                 *[str(p.relative_to(ROOT)) for p in sorted((ROOT/'src').glob('*.v'))],f'test/tb_{bench}.v')
             run('vvp',exe,cwd=ROOT/'src')
     check_frames()
+    check_animations()
 
 if __name__ == '__main__':
     main()

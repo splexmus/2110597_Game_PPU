@@ -19,13 +19,15 @@ module game_logic (
     );
 
     localparam START=3'd0, PLAYER=3'd1, ENEMY=3'd2,
-               CLEAR=3'd3, WIN=3'd4, GAMEOVER=3'd5;
+               CLEAR=3'd3, WIN=3'd4, GAMEOVER=3'd5, PLAYER_ACTION=3'd6;
     reg [2:0] state;
     reg [2:0] room;
     reg [5:0] hp, enemy_hp;
     reg [2:0] potions;
     reg charged, guarding;
     reg [3:0] enemy_wait;
+    reg [1:0] turn_action;
+    reg [4:0] idle_counter;
     wire frame_tick = pix_x == 0 && pix_y == 480;
     wire [3:0] buttons = {inp_start, inp_y | inp_x, inp_b, inp_a};
     reg [3:0] previous_buttons, pending;
@@ -46,63 +48,100 @@ module game_logic (
             previous_buttons <= 0; pending <= 0;
             state <= START; room <= 0; hp <= 30; enemy_hp <= 6'd6;
             potions <= 3'd5; charged <= 0;
-            guarding <= 0; enemy_wait <= 0;
+            guarding <= 0; enemy_wait <= 0; turn_action <= 0; idle_counter <= 0;
         end else begin
             previous_buttons <= buttons;
             pending <= pending | edges;
             if (frame_tick) begin
                 pending <= 0;
+                if (!full_screen_text) idle_counter <= idle_counter + 1'b1;
                 if (events[3] || ((state == START || state == WIN || state == GAMEOVER) && events[0])) begin
                     state <= PLAYER; room <= 0; hp <= 30; enemy_hp <= 6'd6;
                     potions <= 3'd5; charged <= 0;
-                    guarding <= 0; enemy_wait <= 0;
+                    guarding <= 0; enemy_wait <= 0; turn_action <= 0; idle_counter <= 0;
                 end else case (state)
                     START, WIN, GAMEOVER: begin end
                     PLAYER: begin
-                        if (commit_action) begin
+                        if (commit_action && (action != 2 || (potions != 0 && hp < 30))) begin
+                            turn_action <= action;
                             guarding <= action == 1;
-                            if (action == 0) begin
-                                if (enemy_hp <= attack) begin
-                                    enemy_hp <= 0;
-                                    state <= room == 4 ? WIN : CLEAR;
-                                end else begin
-                                    enemy_hp <= enemy_hp - attack;
-                                    state <= ENEMY; enemy_wait <= 12;
-                                end
-                            end else if (action == 1) begin
-                                // Guard counters for 3 and reduces the next hit to 1.
-                                if (enemy_hp <= 3) begin
-                                    enemy_hp <= 0;
-                                    state <= room == 4 ? WIN : CLEAR;
-                                end else begin
-                                    enemy_hp <= enemy_hp - 6'd3;
-                                    state <= ENEMY; enemy_wait <= 12;
-                                end
-                            end else if (potions != 0 && hp < 30) begin
+                            enemy_wait <= 12;
+                            state <= PLAYER_ACTION;
+                        end
+                    end
+                    PLAYER_ACTION: begin
+                        if (enemy_wait != 0) enemy_wait <= enemy_wait - 1'b1;
+                        if (enemy_wait == 6) begin
+                            if (turn_action == 0)
+                                enemy_hp <= (enemy_hp <= attack) ? 6'd0 : enemy_hp - attack;
+                            else if (turn_action == 1)
+                                enemy_hp <= (enemy_hp <= 3) ? 6'd0 : enemy_hp - 6'd3;
+                            else begin
                                 hp <= hp >= 18 ? 6'd30 : hp + 6'd12;
                                 potions <= potions - 1'b1;
-                                state <= ENEMY; enemy_wait <= 12;
                             end
+                        end
+                        if (enemy_wait == 0) begin
+                            if (enemy_hp == 0) state <= room == 4 ? WIN : CLEAR;
+                            else begin state <= ENEMY; enemy_wait <= 12; end
                         end
                     end
                     ENEMY: begin
                         if (enemy_wait != 0) enemy_wait <= enemy_wait - 1'b1;
-                        else begin
+                        if (enemy_wait == 6) begin
                             charged <= ~charged;
-                            if (hp <= damage) begin hp <= 0; state <= GAMEOVER; end
-                            else begin hp <= hp - damage; state <= PLAYER; end
+                            hp <= (hp <= damage) ? 6'd0 : hp - damage;
+                        end
+                        if (enemy_wait == 0) begin
+                            state <= hp == 0 ? GAMEOVER : PLAYER;
+                            guarding <= 0;
                         end
                     end
                     CLEAR: if (events[0]) begin
                         room <= room + 1'b1;
                         enemy_hp <= room == 3'd3 ? 6'd20 : 6'd9 + {3'b0,room} * 6'd3;
                         hp <= hp >= 26 ? 6'd30 : hp + 6'd4;
-                        charged <= 0; guarding <= 0;
+                        charged <= 0; guarding <= 0; idle_counter <= 0;
                         state <= PLAYER;
                     end
                     default: state <= START;
                 endcase
             end
+        end
+    end
+
+    localparam POSE_IDLE=2'd0, POSE_ATTACK=2'd1, POSE_DEFEND=2'd2, POSE_HEAL=2'd3;
+    reg [7:0] hero_x, enemy_x;
+    reg [6:0] hero_y, enemy_y;
+    reg [1:0] hero_pose, enemy_pose;
+    reg [5:0] lunge;
+    wire enemy_visible = enemy_hp != 0 || state == PLAYER_ACTION;
+    wire hero_slash = state == PLAYER_ACTION && turn_action == 0 && enemy_wait >= 4 && enemy_wait <= 7;
+    wire enemy_slash = state == ENEMY && enemy_wait >= 4 && enemy_wait <= 7;
+    always @* begin
+        hero_x = 28; enemy_x = 108;
+        hero_y = 7'd60 - {6'b0,idle_counter[4]};
+        enemy_y = 7'd60 - {6'b0,idle_counter[3]};
+        hero_pose = POSE_IDLE; enemy_pose = POSE_IDLE;
+        lunge = 0;
+        if (enemy_wait >= 8 && enemy_wait <= 10) lunge = 24;
+        else if (enemy_wait >= 4 && enemy_wait <= 7) lunge = 56;
+        else if (enemy_wait >= 1 && enemy_wait <= 3) lunge = 24;
+        if (state == PLAYER_ACTION) begin
+            hero_y = 60; enemy_y = 60;
+            if (turn_action == 2) hero_pose = POSE_HEAL;
+            else begin
+                hero_pose = turn_action == 1 ? POSE_DEFEND : POSE_ATTACK;
+                hero_x = 8'd28 + {2'b0,lunge};
+                enemy_pose = POSE_DEFEND;
+                if (enemy_wait <= 7 && enemy_wait >= 1) enemy_x = 112;
+            end
+        end else if (state == ENEMY) begin
+            hero_y = 60; enemy_y = 60;
+            enemy_x = 8'd108 - {2'b0,lunge};
+            enemy_pose = POSE_ATTACK;
+            hero_pose = POSE_DEFEND;
+            if (enemy_wait <= 7 && enemy_wait >= 1) hero_x = 24;
         end
     end
 
@@ -122,15 +161,16 @@ module game_logic (
     wire sprite_opaque;
     reg sprite_enable;
     reg [3:0] sprite_id, sprite_x;
+    reg [1:0] sprite_pose;
     reg [4:0] sprite_y;
     always @* begin
-        sprite_enable = 0; sprite_id = 0; sprite_x = 0; sprite_y = 0;
-        if (fetch_y >= 60 && fetch_y < 84 && fetch_x >= 28 && fetch_x < 44) begin
-            sprite_enable = 1; sprite_id = 0;
-            sprite_x = fetch_x[3:0] - 4'd12; sprite_y = fetch_y[4:0] - 5'd28;
-        end else if (enemy_hp != 0 && fetch_y >= 60 && fetch_y < 84 && fetch_x >= 108 && fetch_x < 124) begin
-            sprite_enable = 1; sprite_id = {1'b0,room} + 4'd1;
-            sprite_x = fetch_x[3:0] - 4'd12; sprite_y = fetch_y[4:0] - 5'd28;
+        sprite_enable = 0; sprite_id = 0; sprite_x = 0; sprite_y = 0; sprite_pose = POSE_IDLE;
+        if (fetch_y >= hero_y && fetch_y < hero_y + 7'd24 && fetch_x >= hero_x && fetch_x < hero_x + 8'd16) begin
+            sprite_enable = 1; sprite_id = 0; sprite_pose = hero_pose;
+            sprite_x = fetch_x[3:0] - hero_x[3:0]; sprite_y = fetch_y[4:0] - hero_y[4:0];
+        end else if (enemy_visible && fetch_y >= enemy_y && fetch_y < enemy_y + 7'd24 && fetch_x >= enemy_x && fetch_x < enemy_x + 8'd16) begin
+            sprite_enable = 1; sprite_id = {1'b0,room} + 4'd1; sprite_pose = enemy_pose;
+            sprite_x = 4'd15 - (fetch_x[3:0] - enemy_x[3:0]); sprite_y = fetch_y[4:0] - enemy_y[4:0];
         end else if (fetch_y >= 40 && fetch_y < 64 && fetch_x >= 72 && fetch_x < 88) begin
             sprite_enable = 1; sprite_id = 6;
             sprite_x = fetch_x[3:0] - 4'd8; sprite_y = fetch_y[4:0] - 5'd8;
@@ -148,7 +188,7 @@ module game_logic (
     bg_rom background (.clk(clk), .rst_n(rst_n), .room(room),
                        .x(fetch_x), .y(fetch_y), .color(bg_pix));
     sprite_rom sprites (.clk(clk), .rst_n(rst_n), .enable(sprite_enable && fetching),
-                        .sprite_id(sprite_id), .x(sprite_x), .y(sprite_y),
+                        .sprite_id(sprite_id), .pose(sprite_pose), .x(sprite_x), .y(sprite_y),
                         .color(sprite_pix), .opaque(sprite_opaque));
 
     reg [4:0] font [0:1023];
@@ -188,7 +228,8 @@ module game_logic (
             12: text_line = " A HIT   B GUARD   Y HEAL ";
             13: text_line = " GUARD BLOCKS HEAVY HITS  ";
             14: begin
-                if (state == ENEMY) text_line = "      ENEMY TURN...       ";
+                if (state == PLAYER_ACTION) text_line = "       YOUR ACTION        ";
+                else if (state == ENEMY) text_line = "      ENEMY TURN...       ";
                 else if (state == CLEAR) text_line = "   ROOM CLEAR - A NEXT    ";
                 else if (state == PLAYER) text_line = "        YOUR TURN         ";
             end
@@ -233,6 +274,15 @@ module game_logic (
         if (full_screen_text) begin
             composed = 6'h00;
         end else begin
+            if (hero_slash && draw_x >= hero_x + 8'd16 && draw_x < hero_x + 8'd24 &&
+                draw_y >= 66 && draw_y < 78 && draw_x + {1'b0,draw_y} == hero_x + 8'd93)
+                composed = 6'h3f;
+            if (enemy_slash && draw_x >= enemy_x - 8'd8 && draw_x < enemy_x &&
+                draw_y >= 66 && draw_y < 78 && draw_x - {1'b0,draw_y} == enemy_x - 8'd78)
+                composed = 6'h34;
+            if (state == ENEMY && guarding && enemy_wait <= 7 && enemy_wait >= 4 &&
+                draw_x == hero_x + 8'd17 && draw_y >= 67 && draw_y < 81)
+                composed = 6'h0f;
             // Health meters above the two combatants.
             if (draw_y >= 55 && draw_y < 57) begin
                 if (draw_x >= 22 && draw_x < 52)

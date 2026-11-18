@@ -34,7 +34,10 @@ module tb_game;
     endtask
     task press;
         input [11:0] bits;
-        begin packet(bits); tick; packet(0); tick; end
+        begin
+            packet(bits); tick; packet(0); tick;
+            while(dut.state==6) tick;
+        end
     endtask
     task finish_enemy;
         integer n;
@@ -71,6 +74,12 @@ module tb_game;
         press(12'h010); check(dut.state==1 && dut.hp==30 && dut.enemy_hp==6,"Right does not select or act");
         // A held across many frames causes exactly one attack.
         packet(12'h008); tick;
+        check(dut.enemy_hp==6 && dut.state==6,"Attack starts animation before damage");
+        repeat(6) tick;
+        check(dut.enemy_hp==6 && dut.hero_x==84 && dut.enemy_pose==2,"Lunge and enemy brace precede impact");
+        tick;
+        check(dut.enemy_hp==2,"Attack damage lands on the impact frame");
+        while(dut.state==6) tick;
         check(dut.enemy_hp==2 && dut.state==2,"Attack damage and enemy phase");
         finish_enemy;
         check(dut.hp==26 && dut.charged,"First enemy hit and heavy telegraph");
@@ -142,7 +151,31 @@ module tb_game;
         // A short press entirely between frame ticks is retained.
         press(12'h100);
         packet(12'h008); packet(0); tick;
-        check(dut.enemy_hp==2 && dut.state==2,"Short press between frames is retained");
+        check(dut.state==6,"Short press between frames is retained");
+        while(dut.state==6) tick;
+        check(dut.enemy_hp==2 && dut.state==2,"Short press completes one attack");
+        // Idle animation never spends turns, and both actors move while waiting.
+        press(12'h100);
+        check(dut.hero_y==60 && dut.enemy_y==60,"Restart clears animation phase");
+        repeat(8) tick;
+        check(dut.hero_y==60 && dut.enemy_y==59,"Enemy idle bob");
+        repeat(8) tick;
+        check(dut.hero_y==59 && dut.enemy_y==60 && dut.hp==30 && dut.enemy_hp==6,"Hero idle bob without damage");
+        // Guard's pose persists through the enemy strike and resets afterward.
+        press(12'h800);
+        check(dut.state==2 && dut.guarding && dut.hero_pose==2,"Guard is held for retaliation");
+        repeat(6) tick;
+        check(dut.enemy_x==52 && dut.enemy_pose==1 && dut.hp==30,"Enemy lunges before damage");
+        tick; check(dut.hp==29,"Guarded impact applies once");
+        finish_enemy;
+        check(dut.state==1 && !dut.guarding && dut.hero_pose==0,"Combatants return to idle");
+        // Restart interrupts animation; a finishing hit remains visible until recovery.
+        packet(12'h008); tick;
+        check(dut.state==6,"Finishing action begins animation");
+        repeat(7) tick;
+        check(dut.enemy_hp==0 && dut.enemy_visible && dut.state==6,"Finishing enemy stays visible during recovery");
+        packet(0); packet(12'h100); tick;
+        check(dut.state==1 && dut.enemy_wait==0 && dut.enemy_hp==6,"Restart cancels action animation");
         $display("PASS: serial controls, five rooms, turns, health, victory and defeat");
         $finish;
     end
