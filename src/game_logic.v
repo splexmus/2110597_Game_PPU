@@ -168,20 +168,22 @@ module game_logic (
         if (fetch_y >= hero_y && fetch_y < hero_y + 7'd24 && fetch_x >= hero_x && fetch_x < hero_x + 8'd16) begin
             sprite_enable = 1; sprite_id = 0; sprite_pose = hero_pose;
             sprite_x = fetch_x[3:0] - hero_x[3:0]; sprite_y = fetch_y[4:0] - hero_y[4:0];
+            //Hero
         end else if (enemy_visible && fetch_y >= enemy_y && fetch_y < enemy_y + 7'd24 && fetch_x >= enemy_x && fetch_x < enemy_x + 8'd16) begin
             sprite_enable = 1; sprite_id = {1'b0,room} + 4'd1; sprite_pose = enemy_pose;
             sprite_x = 4'd15 - (fetch_x[3:0] - enemy_x[3:0]); sprite_y = fetch_y[4:0] - enemy_y[4:0];
+            //Enemy
         end else if (fetch_y >= 40 && fetch_y < 64 && fetch_x >= 72 && fetch_x < 88) begin
-            sprite_enable = 1; sprite_id = 6;
+            sprite_enable = 1; sprite_id = 6; //Door
             sprite_x = fetch_x[3:0] - 4'd8; sprite_y = fetch_y[4:0] - 5'd8;
         end else if (fetch_y >= 28 && fetch_y < 52 && (fetch_x < 16 || fetch_x >= 144)) begin
-            sprite_enable = 1; sprite_id = 8;
+            sprite_enable = 1; sprite_id = 8; //Torches
             sprite_x = fetch_x[3:0]; sprite_y = fetch_y[4:0] - 5'd28;
         end else if (fetch_y >= 64 && fetch_y < 88 && fetch_x >= 72 && fetch_x < 88 && enemy_hp == 0) begin
-            sprite_enable = 1; sprite_id = 7;
+            sprite_enable = 1; sprite_id = 7; //Chest
             sprite_x = fetch_x[3:0] - 4'd8; sprite_y = fetch_y[4:0];
         end else if (fetch_y >= 64 && fetch_y < 88 && fetch_x >= 8 && fetch_x < 24 && room[0]) begin
-            sprite_enable = 1; sprite_id = 9;
+            sprite_enable = 1; sprite_id = 9; //Barrel
             sprite_x = fetch_x[3:0] - 4'd8; sprite_y = fetch_y[4:0];
         end
     end
@@ -277,12 +279,14 @@ module game_logic (
             if (hero_slash && draw_x >= hero_x + 8'd16 && draw_x < hero_x + 8'd24 &&
                 draw_y >= 66 && draw_y < 78 && draw_x + {1'b0,draw_y} == hero_x + 8'd93)
                 composed = 6'h3f;
+                //Draw sword
             if (enemy_slash && draw_x >= enemy_x - 8'd8 && draw_x < enemy_x &&
                 draw_y >= 66 && draw_y < 78 && draw_x - {1'b0,draw_y} == enemy_x - 8'd78)
                 composed = 6'h34;
             if (state == ENEMY && guarding && enemy_wait <= 7 && enemy_wait >= 4 &&
                 draw_x == hero_x + 8'd17 && draw_y >= 67 && draw_y < 81)
                 composed = 6'h0f;
+                //Guarding
             // Health meters above the two combatants.
             if (draw_y >= 55 && draw_y < 57) begin
                 if (draw_x >= 22 && draw_x < 52)
